@@ -1,62 +1,149 @@
 ---
 name: clever-compact
-description: Preserve critical session context before a compact and restore it cleanly after. Use when: (1) the user asks to compact or context is approaching limits, (2) a compact just completed and the agent needs to reload context, (3) the user says "save state" or "remember this before we compact", (4) the user installs Clever Compact for the first time and needs AGENTS.md wired. Clever Compact is a pre/post-compact intelligence layer — it writes a structured state file before compression and reloads it on resume so the agent wakes up oriented, not amnesiac.
+description: "Your agent forgets. Clever Compact fixes that. Installs a pre-compact scan + structured state file that survives /new sessions, compaction events, and multi-day gaps — so your agent picks up exactly where it left off instead of starting over. Fixes the three failure modes that hit every serious OpenClaw user: /new amnesia, compaction loss, and memory drift. One install. Fully free."
+tags: [memory, compaction, context, continuity, productivity, /new, amnesia, state-management, power-user, session, persistence, agent-memory, compact, restore, workstreams]
 ---
 
 # Clever Compact
 
-## What It Does
+**Publisher:** Axiom Stream Group  
+**Version:** 1.3.0  
+**Tier:** Free  
+**ClaWHub:** https://clawhub.ai/jfulmines-star/clever-compact  
+**Support:** kit@axiomstreamgroup.com
 
-Before a compact: scan the session, extract what matters, write a state file that survives compression.
-After a compact: read the state file and restore context before the user's first message.
+---
 
-## Pre-Compact Flow
+## What This Skill Does
 
-1. Run the extraction prompt in `references/extraction-prompt.md` against recent session history
-2. Write the result to `memory/compact-state-YYYY-MM-DD-HH.md` using the format in `references/state-template.md`
-3. Confirm to the user: "Saved compact state. You're clear to compact."
+Clever Compact fixes the three memory failure modes that hit every serious OpenClaw user:
 
-**What to extract:**
-- Active workstreams (name, status: done/in-progress/blocked, blocker/URL if applicable)
-- Open tasks with owners
-- Key decisions made this session (with rationale if available)
-- Credentials or IDs captured this session (or note "see TOOLS.md" if already saved)
-- Relationship context (who said what, what they need, what to remember)
-- Explicit "remember this" flags from the user
+- **`/new` amnesia** — you start a fresh session and your agent acts like it's never met you
+- **Compaction loss** — context fills up, compact fires, the agent forgets what you were doing mid-task
+- **Memory drift** — decisions made three sessions ago quietly disappear; the agent makes the same mistake again
 
-**What NOT to extract:** Full message transcripts, long code blocks, detailed research already saved to files. The state file is a navigation aid, not a transcript.
+Install once. Your agent writes a structured state file before every compact and reads it back the moment it wakes up. It resumes from where it left off — no "what were we working on?" no lost context, no repeated mistakes.
 
-## Post-Compact Restore Flow
+**Why this matters in practice:** Compaction can take **up to 10 minutes** while your session is unresponsive. In a client demo, a live deployment, or a time-sensitive session — that's an outage. Clever Compact bridges the gap.
 
-On session start (or immediately after compact fires), check for the most recent state file:
+---
 
-```bash
-ls -t memory/compact-state-*.md 2>/dev/null | head -1
+## Installation
+
+1. Copy this file to your workspace as `skills/clever-compact/SKILL.md`
+2. Copy `scripts/pre-compact-scan.md` to `skills/clever-compact/scripts/pre-compact-scan.md`
+3. Copy `templates/compact-state.json` to `skills/clever-compact/templates/compact-state.json`
+4. Add the following to your `AGENTS.md` (in the "Every Session" section):
+
+```
+## Clever Compact — Context Restore
+Before responding to anything after a compact or new session:
+1. Check if `memory/compact-state-[most-recent].md` exists
+2. If yes: read it fully before responding
+3. Resume from that state — do not ask "what were we working on?"
 ```
 
-If found: read it and load its contents into working context before responding. Tell the user:
-> "Restored from compact state [date]. I have [N] active workstreams and [N] open tasks reloaded. Ready."
+5. Add the following to your heartbeat or pre-compact trigger:
 
-If not found: proceed normally.
+```
+## Clever Compact — Pre-Compact Protocol
+When context reaches 75% or higher, OR when a compact is about to occur:
+1. Run the pre-compact scan (see skills/clever-compact/scripts/pre-compact-scan.md)
+2. Write output to memory/compact-state-YYYY-MM-DD-HH.md
+3. Confirm: "State file written. Compacting now."
+```
 
-## AGENTS.md Hook
+---
 
-Add this block to the workspace AGENTS.md to make restore automatic:
+## How It Works
+
+### Pre-Compact Scan
+When triggered (manually or at context threshold), your agent runs a structured extraction:
+
+- **Active workstreams** — name, status (done/in-progress/blocked), blocker if applicable, key URL or file path
+- **Key decisions** — what was decided and why; any "do not do X" rules established
+- **Open tasks** — what's pending, who owns it
+- **Credentials & IDs captured this session** — pointers only (e.g., "saved to TOOLS.md")
+- **Relationship context** — what each person said, what they need, what to remember
+- **Explicit "remember this" flags** — anything the user specifically flagged
+
+### State File
+Written to `memory/compact-state-YYYY-MM-DD-HH.md`. Structured Markdown + embedded JSON. Survives compact. Survives `/new`. Persists until deliberately deleted.
+
+### Post-Compact Restore
+On session resume, agent reads the most recent state file before responding to anything. Presents a one-line summary: "Resuming from [date] state file. [N] workstreams, [N] open tasks." Then continues.
+
+---
+
+## Reduce Compaction Frequency (Recommended)
+
+Auto-compaction cannot be disabled in OpenClaw — it's baked in. But you can push it later in the context window by lowering `reserveTokens` in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "compaction": {
+        "mode": "safeguard",
+        "reserveTokens": 15000
+      }
+    }
+  }
+}
+```
+
+**Default is 50,000** (fires at ~150k/200k). Setting to **15,000** fires at ~185k — roughly 3–4× fewer compactions per heavy session. No restart required.
+
+---
+
+## Manual Trigger
+
+Say to your agent:
+> "Run a Clever Compact scan and write the state file."
+
+Your agent will run the pre-compact scan and confirm when the file is written.
+
+---
+
+## State File Format
 
 ```markdown
-## Clever Compact — Post-Compact Restore
-After any compact, before responding to the user:
-1. Run: ls -t memory/compact-state-*.md | head -1
-2. If found: read that file and load context
-3. Tell the user you have restored state and list active workstreams
+# Compact State — [DATE] [TIME]
+_Generated by Clever Compact v1.0 | Axiom Stream Group_
+
+## Active Workstreams
+| Name | Status | Blocker | Notes |
+|---|---|---|---|
+| [name] | in-progress | [blocker or —] | [key context] |
+
+## Key Decisions
+- [Decision]: [rationale / constraint]
+
+## Open Tasks
+- [ ] [Task] — Owner: [person or Kit]
+
+## Credentials This Session
+- Saved to TOOLS.md (do not re-capture)
+
+## Relationship Context
+- [Person]: [what they said / what they need / what to remember]
+
+## Remember Flags
+- [Anything explicitly flagged]
+
+---
+_Next session: read this file before responding to anything._
 ```
 
-## State File Location
+---
 
-Always write to: `memory/compact-state-YYYY-MM-DD-HH.md`
-Create the `memory/` directory if it does not exist.
+## Changelog
+- **1.3.0** (2026-03-05): Fully free. All features available at no cost.
+- **1.2.0** (2026-03-04): Reframed around the three failure modes: `/new` amnesia, compaction loss, memory drift. Language updated to match how power users describe the problem. No functional changes.
+- **1.1.0** (2026-03-03): Added `reserveTokens` tuning guide (reduce compaction frequency). Updated urgency language — compaction takes up to 10 minutes, not 10 seconds. Practical discovery from live power-user sessions.
+- **1.0.0** (2026-03-01): Initial release. Core extraction + state file write + AGENTS.md restore hook.
 
-## Reference Files
+---
 
-- **`references/extraction-prompt.md`** — the extraction prompt to run against session history
-- **`references/state-template.md`** — the state file format
+*Built by Axiom Stream Group — axiomstreamgroup.com*  
+*We built this because we needed it. We run it on our own agents every day.*
