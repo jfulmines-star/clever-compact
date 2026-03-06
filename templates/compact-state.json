@@ -17,7 +17,7 @@
   "open_tasks": [
     { "task": "[description]", "owner": "Kit", "blocked": false }
   ],
-  "credentials_note": "All credentials in TOOLS.md",
+  "config_note": "API references and config saved to TOOLS.md",
   "relationship_context": {
     "[Person]": ["[what they said]", "[what they need]"]
   },

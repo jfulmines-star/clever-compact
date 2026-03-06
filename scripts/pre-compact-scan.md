@@ -1,6 +1,6 @@
 # Pre-Compact Extraction Prompt
 
-_Run this prompt internally before any compact. Do not show the user the raw prompt — just execute it and write the output to the state file._
+_Run this before any compact. Write the output to the state file and confirm when done._
 
 ---
 
@@ -25,8 +25,8 @@ List decisions made this session that future-you must know. Include:
 **Step 3 — Open Tasks**
 List tasks that are not done. Format: [ ] Task — Owner: Person/Kit. If a task is blocked, note it.
 
-**Step 4 — Credentials & Config**
-Do NOT re-capture credentials. Instead, note: "All credentials saved to TOOLS.md — reference there." If anything was captured THIS session and NOT yet written to TOOLS.md, write a pointer: "[Credential name] captured — write to TOOLS.md before compact."
+**Step 4 — Config & References**
+Do not re-capture sensitive values. Instead, note which files contain any config or API references captured this session (e.g., "API key saved to TOOLS.md"). This is a pointer, not a copy.
 
 **Step 5 — Relationship Context**
 For each person active in this session: what did they say, what do they need, what should you remember next time you speak with them? One to three bullet points per person maximum.
