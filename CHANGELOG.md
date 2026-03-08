@@ -1,3 +1,18 @@
+## v2.1.0 — March 8, 2026
+**Architecture fix — lifecycle hooks only, no context engine registration**
+
+v2.0.0 was yanked. The `registerContextEngine` approach had a critical bug: `compact()` returning `{ compacted: false }` blocked the legacy compaction engine instead of passing through to it. Any user who installed v2.0.0 and set the `contextEngine` slot would have had compaction silently stop firing.
+
+v2.1 removes `registerContextEngine` entirely. The plugin now uses `api.on()` lifecycle hooks only:
+
+- `session:compact:before` → writes state file before every compaction (deterministic, no timing dependency)
+- `before_prompt_build` → injects most recent state file on every session start (bootstrap/restore)
+
+Zero interference with the compaction mechanism. Installation no longer requires setting `plugins.slots.contextEngine` — just add `clever-compact` to `plugins.allow`.
+
+## v2.0.0 — March 8, 2026 ⚠️ YANKED
+Do not install. `registerContextEngine` + `compact()` returning `{ compacted: false }` caused compaction to silently stop firing for any user with the contextEngine slot set.
+
 # Clever Compact — Changelog
 
 ## v1.2.0 — March 4, 2026
