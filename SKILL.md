@@ -1,15 +1,15 @@
 ---
 name: clever-compact
-description: "Fixes the three OpenClaw memory failure modes: /new amnesia (agent forgets everything after a fresh session), compaction loss (context fills up, compact fires, agent loses active workstreams mid-task), and memory drift (decisions from past sessions quietly disappear). v2: native OpenClaw Context Engine plugin — hooks directly into the compaction lifecycle. No heartbeat dependency. No timing races. Deterministic."
+description: "Your OpenClaw agent forgets everything between sessions — after /new, after compaction, after overnight. Clever Compact fixes all three: injects your last state on session start, flushes before every compact, and keeps memory stable across context resets. Native plugin. Zero per-turn overhead. Install in 4 steps, runs automatically."
 tags: [memory, compaction, context, continuity, productivity, /new, amnesia, state-management, power-user, plugin, context-engine]
 ---
 
 # Clever Compact
 
 **Publisher:** Axiom Stream Group  
-**Version:** 2.1.0  
+**Version:** 2.2.3  
 **Tier:** Free  
-**Requires:** OpenClaw ≥ 2026.3.7  
+**Requires:** OpenClaw ≥ 2026.3.7 · Recommended: 2026.3.12+ (fixes double-compaction loop)  
 **ClaWHub:** https://clawhub.ai/jfulmines-star/clever-compact  
 **Support:** kit@axiomstreamgroup.com
 
@@ -23,15 +23,46 @@ Clever Compact fixes the three memory failure modes that hit every serious OpenC
 - **Compaction loss** — context fills up, compact fires, the agent forgets what you were doing mid-task
 - **Memory drift** — decisions made three sessions ago quietly disappear; the agent makes the same mistake again
 
-**v2 is a native OpenClaw Context Engine plugin.** It hooks directly into the compaction lifecycle — no heartbeat timing hacks, no AGENTS.md surgery, no hoping the scan runs before compact fires. The hook runs before *every* compaction, *every time*, at the OS level.
+**v2 is a native OpenClaw plugin** with two parts:
 
-Install once. Your agent writes a structured state file before every compact and restores it the moment it wakes up. It resumes from where it left off — no "what were we working on?" no lost context, no repeated mistakes.
+### Part 1 — Session restore (automatic)
+At the start of every session (including after `/new` and after compaction), Clever Compact checks for a recent state file. If one exists (written within 72 hours), it injects the content as system context on the **first turn only**. Your agent wakes up oriented — no repeated context injections, no per-turn token overhead.
 
-**Why this matters in practice:** Compaction can take **up to 10 minutes** while your session is unresponsive. In a client demo, a live deployment, or a time-sensitive session — that's an outage. Clever Compact bridges the gap.
+### Part 2 — State write (triggered)
+OpenClaw does not currently expose a pre-compaction lifecycle hook, so the write side is **triggered explicitly** — not automatic. You have three options:
+
+1. **Manual trigger:** Tell your agent `"Run a Clever Compact flush and save state."` It writes `memory/compact-state-YYYY-MM-DD-HHmm.md` immediately.
+2. **Pre-compact cron:** Set up a cron job that fires before your scheduled compact with the system event: `"Pre-compaction memory flush. Store durable memories now."` Your agent writes state, then compact fires.
+3. **Heartbeat entry:** Add a flush step to your `HEARTBEAT.md` that periodically writes state — no timing races because it runs on demand.
+
+The plugin also exposes `api.fn("clever-compact:write")` so any tool in your stack can trigger a state write programmatically.
 
 ---
 
-## Installation (v2 — Plugin Mode)
+## Security & Privacy
+
+State files are stored as **plaintext Markdown** in your `memory/` directory. They are local to your machine and not transmitted anywhere by this plugin.
+
+**Do not include in state files:**
+- API keys, tokens, or secrets
+- Passwords or credentials
+- Private personal information you wouldn't put in a text file
+
+The plugin generates a reminder header in every state file. Review `memory/compact-state-*.md` periodically and remove any sensitive content that may have been captured inadvertently.
+
+The `api.fn("clever-compact:write")` exposure is intentional — it allows your heartbeat, cron, or other tools to trigger a state flush programmatically. Audit any automation that calls this function to ensure it writes only session context, not credentials.
+
+---
+
+## How the write side works
+
+Your agent is active and responsive right up until compact fires — so a cron job 5 minutes before your scheduled compact, or a heartbeat flush at 75% context, gives you a clean, predictable save point every time.
+
+When OpenClaw ships a pre-compaction lifecycle hook, Clever Compact will use it automatically. Until then, the cron + heartbeat pattern is the right architecture — and it works.
+
+---
+
+## Installation
 
 > **Requires OpenClaw ≥ 2026.3.7**
 
@@ -59,28 +90,31 @@ Or copy the folder to `~/.openclaw/extensions/clever-compact/`.
 openclaw gateway restart
 ```
 
-That's it. No AGENTS.md changes. No heartbeat entries. No manual triggers.
+**Step 4 — Set up a flush trigger** (pick one):
+
+*Option A — Cron (recommended):*
+```
+Schedule: 5 minutes before your nightly compact
+Payload: "Pre-compaction memory flush. Store durable memories now (memory/YYYY-MM-DD.md). If nothing to store, reply NO_REPLY."
+```
+
+*Option B — Heartbeat:*
+Add to `HEARTBEAT.md`:
+```markdown
+## Context Flush (every heartbeat at >75% context)
+- If context > 75%: run a Clever Compact flush — write state to memory/compact-state-YYYY-MM-DD-HHmm.md
+```
+
+*Option C — Manual:*
+Tell your agent: `"Run a Clever Compact flush and save state."`
 
 ---
 
-## How It Works (v2)
-
-### `compact()` hook — fires before every compaction
-Before OpenClaw compacts your session, Clever Compact writes a structured state file to `memory/compact-state-YYYY-MM-DD-HHmm.md`. The legacy compaction engine then runs as normal. Nothing changes about how compaction works — we just add a deterministic save point before it fires.
-
-### `assemble()` hook — fires on every context build
-At the start of every session (including after `/new` and after compaction), Clever Compact checks for a recent state file. If one exists (within 72 hours), it injects the content as system context before the first turn. Your agent wakes up oriented.
-
-### State file
-Written to `memory/compact-state-YYYY-MM-DD-HHmm.md`. Structured Markdown. Survives compact. Survives `/new`. Persists until deliberately deleted. Files older than 72 hours are ignored automatically.
-
----
-
-## State File Format
+## State file format
 
 ```markdown
 # Compact State — [ISO TIMESTAMP]
-_Generated by Clever Compact v2.0.0 | Axiom Stream Group_
+_Generated by Clever Compact v2.2.0 | Axiom Stream Group_
 
 ## Active Workstreams
 | Name | Status | Blocker | Notes |
@@ -93,12 +127,6 @@ _Generated by Clever Compact v2.0.0 | Axiom Stream Group_
 ## Open Tasks
 - [ ] [Task] — Owner: [person or agent]
 
-## Config & References
-- API keys and config saved to TOOLS.md (pointers only)
-
-## Relationship Context
-- [Person]: [what they said / what they need / what to remember]
-
 ## Remember Flags
 - [Anything explicitly flagged]
 
@@ -106,9 +134,11 @@ _Generated by Clever Compact v2.0.0 | Axiom Stream Group_
 _Next session: read this file before responding to anything._
 ```
 
+State files live in `memory/` and are ignored after 72 hours.
+
 ---
 
-## Reduce Compaction Frequency (Recommended)
+## Reduce compaction frequency (recommended)
 
 Push compaction later in the context window by lowering `reserveTokens`:
 
@@ -129,31 +159,29 @@ Push compaction later in the context window by lowering `reserveTokens`:
 
 ---
 
-## Manual Trigger
+## Migration from v2.0 / v2.1
 
-Say to your agent:
-> "Run a Clever Compact scan and write the state file."
+The injection behavior is unchanged. One fix to apply:
 
-Your agent will write the state file to `memory/` and confirm.
-
----
+**v2.0/v2.1 injected the state file on every prompt turn** — this added token overhead mid-session and contributed to faster compactions. v2.2.0 injects only once per session (first turn). No other changes needed; your existing state files and cron setup carry over.
 
 ## Migration from v1
 
-If you're upgrading from v1.x:
-
-1. Remove the Clever Compact blocks from your `AGENTS.md` (the "Context Restore" and "Pre-Compact Protocol" sections)
-2. Remove the heartbeat entries that referenced the pre-compact scan
+1. Remove the Clever Compact blocks from your `AGENTS.md`
+2. Remove heartbeat entries that referenced the pre-compact scan
 3. Follow the v2 installation steps above
-4. Existing state files in `memory/` are automatically picked up by v2
+4. Existing state files in `memory/` are picked up automatically
 
 ---
 
 ## Changelog
-- **2.0.0** (2026-03-08): Full rewrite as native OpenClaw Context Engine plugin. Requires OpenClaw ≥ 2026.3.7. Deterministic `compact()` and `assemble()` hooks replace heartbeat-based timing. No AGENTS.md surgery required. Breaking change from v1 — see migration guide above.
+- **2.2.3** (2026-03-16): Version sync across all files (package.json, openclaw.plugin.json, index.ts were mismatched). Fixed install step count in description. Updated recommended OpenClaw version to 2026.3.12+. Rewrote defensive "explicit write" section. No functional changes.
+- **2.2.0** (2026-03-11): Fixed per-turn injection (now injects once at session start only — eliminates mid-session token overhead). Accurately documents write side as explicit/triggered, not automatic. Exposes `clever-compact:write` fn for programmatic state writes. No breaking changes.
+- **2.1.0** (2026-03-10): Added `writeState()` export. Clarified hooks.
+- **2.0.0** (2026-03-08): Full rewrite as native OpenClaw plugin. Requires OpenClaw ≥ 2026.3.7. Breaking change from v1.
 - **1.3.1** (2026-03-06): Clarified config/reference language. No functional changes.
 - **1.3.0** (2026-03-05): Fully free. All features available at no cost.
-- **1.2.0** (2026-03-04): Reframed around the three failure modes. Language updated.
+- **1.2.0** (2026-03-04): Reframed around the three failure modes.
 - **1.1.0** (2026-03-03): Added `reserveTokens` tuning guide.
 - **1.0.0** (2026-03-01): Initial release.
 

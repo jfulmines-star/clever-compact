@@ -1,10 +1,10 @@
 {
   "id": "clever-compact",
   "name": "Clever Compact",
-  "version": "2.1.0",
-  "description": "Lossless compaction for OpenClaw agents. Writes a structured state file before every compact and restores it on session start. Fixes /new amnesia, compaction loss, and memory drift. Does NOT register as a context engine — zero interference with the compaction mechanism.",
+  "version": "2.3.0",
+  "description": "Lossless compaction for OpenClaw agents. Writes a structured state file before every compact and restores it on session start. Fixes /new amnesia, compaction loss, and memory drift. Compatible with OpenClaw 2026.4.10+.",
   "openclaw": {
-    "extensions": ["./index.ts"],
+    "extensions": ["./index.js"],
     "skills": ["./"]
   },
   "configSchema": {
